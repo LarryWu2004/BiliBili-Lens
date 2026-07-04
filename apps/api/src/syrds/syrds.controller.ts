@@ -1,10 +1,10 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Inject, Query } from '@nestjs/common';
 import { NoticeLocation } from './syrds.types';
 import { SyrdsService } from './syrds.service';
 
 @Controller('syrds')
 export class SyrdsController {
-  constructor(private readonly syrdsService: SyrdsService) {}
+  constructor(@Inject(SyrdsService) private readonly syrdsService: SyrdsService) {}
 
   @Get('notices')
   getNotices(@Query('location') location?: NoticeLocation) {
@@ -31,4 +31,3 @@ export class SyrdsController {
     };
   }
 }
-

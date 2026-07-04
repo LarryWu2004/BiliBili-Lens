@@ -29,7 +29,25 @@ export interface CommentRow {
   link: string | null;
 }
 
+interface HealthResponse {
+  ok: boolean;
+  database?: {
+    ok: boolean;
+    message: string;
+  };
+}
+
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
+
+export async function checkApiHealth(): Promise<void> {
+  const health = (await requestJson(`${apiBaseUrl}/api/health`)) as HealthResponse;
+  if (!health.ok) {
+    throw new Error('BiliBili Lens API 当前不可用。');
+  }
+  if (health.database && !health.database.ok) {
+    throw new Error('数据库未连接。请先启动 PostgreSQL，并执行 Prisma 迁移后再采集评论。');
+  }
+}
 
 export async function collectPage(payload: {
   uid: string;
@@ -39,19 +57,13 @@ export async function collectPage(payload: {
   start_dt?: string;
   end_dt?: string;
 }): Promise<CollectionResult> {
-  const response = await fetch(`${apiBaseUrl}/api/collection-tasks`, {
+  return requestJson(`${apiBaseUrl}/api/collection-tasks`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    throw new Error(await extractError(response));
-  }
-
-  return response.json() as Promise<CollectionResult>;
+  }) as Promise<CollectionResult>;
 }
 
 export async function listComments(uid: string, take = 20): Promise<CommentRow[]> {
@@ -59,12 +71,24 @@ export async function listComments(uid: string, take = 20): Promise<CommentRow[]
   url.searchParams.set('uid', uid);
   url.searchParams.set('take', String(take));
 
-  const response = await fetch(url);
+  return requestJson(url) as Promise<CommentRow[]>;
+}
+
+async function requestJson(input: RequestInfo | URL, init?: RequestInit): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await fetch(input, init);
+  } catch (error) {
+    throw new Error(
+      `无法连接到 BiliBili Lens API。请确认后端服务已启动，并且 NEXT_PUBLIC_API_BASE_URL 指向可访问地址。当前地址：${apiBaseUrl}`,
+    );
+  }
+
   if (!response.ok) {
     throw new Error(await extractError(response));
   }
 
-  return response.json() as Promise<CommentRow[]>;
+  return response.json();
 }
 
 async function extractError(response: Response): Promise<string> {

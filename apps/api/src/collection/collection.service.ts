@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { Prisma, TaskStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -8,8 +8,8 @@ import { CollectPageInput } from './collection.schemas';
 @Injectable()
 export class CollectionService {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly syrdsService: SyrdsService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(SyrdsService) private readonly syrdsService: SyrdsService,
   ) {}
 
   async collectPage(input: CollectPageInput) {

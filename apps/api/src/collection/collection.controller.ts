@@ -1,11 +1,11 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Inject, Param, Post, Query } from '@nestjs/common';
 import { z } from 'zod';
 import { collectPageSchema } from './collection.schemas';
 import { CollectionService } from './collection.service';
 
 @Controller()
 export class CollectionController {
-  constructor(private readonly collectionService: CollectionService) {}
+  constructor(@Inject(CollectionService) private readonly collectionService: CollectionService) {}
 
   @Post('collection-tasks')
   collectPage(@Body() body: unknown) {
@@ -46,4 +46,3 @@ function assertUid(uid: string): void {
     throw new BadRequestException('uid must be a positive integer string with 1-20 digits and no leading zero');
   }
 }
-

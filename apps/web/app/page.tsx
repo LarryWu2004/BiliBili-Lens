@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { Activity, Database, FileSearch, Gauge, RefreshCw, ShieldCheck } from 'lucide-react';
-import { collectPage, CollectionResult, CommentRow, listComments } from '../lib/api';
+import { checkApiHealth, collectPage, CollectionResult, CommentRow, listComments } from '../lib/api';
 
 const uidPattern = /^[1-9]\d{0,19}$/;
 
@@ -29,6 +29,7 @@ export default function HomePage() {
 
     setLoading(true);
     try {
+      await checkApiHealth();
       const collection = await collectPage({
         uid,
         pageNum,
