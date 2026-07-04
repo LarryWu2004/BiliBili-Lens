@@ -1,0 +1,227 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProjectType {
+  personal
+  enterprise
+}
+
+enum ReviewStatus {
+  pending
+  reviewing
+  passed
+  needs_review
+  rejected
+}
+
+enum TaskStatus {
+  pending
+  running
+  rate_limited
+  blocked
+  completed
+  failed
+  cancelled
+}
+
+enum RiskLevel {
+  low
+  medium
+  high
+}
+
+enum RuleType {
+  keyword
+  regex
+  composite
+  whitelist
+}
+
+model UserProfile {
+  id             String    @id @default(cuid())
+  uid            String    @unique
+  currentName    String?   @map("current_name")
+  allNames       String?   @map("all_names")
+  commentCount   Int       @default(0) @map("comment_count")
+  firstCommentAt DateTime? @map("first_comment_at")
+  lastCommentAt  DateTime? @map("last_comment_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  comments Comment[]
+
+  @@map("users")
+}
+
+model Comment {
+  id             String      @id @default(cuid())
+  uid            String
+  user           UserProfile @relation(fields: [uid], references: [uid], onDelete: Cascade)
+  bvid           String?
+  videoTitle     String?     @map("video_title")
+  videoOwnerName String?     @map("video_owner_name")
+  content        String
+  pubdate        DateTime?
+  dt             DateTime?
+  favoriteCount  Int         @default(0) @map("favorite_count")
+  replyCount     Int         @default(0) @map("reply_count")
+  replyType      Int?        @map("reply_type")
+  link           String?
+  contentHash    String      @map("content_hash")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  riskHits RiskHit[]
+
+  @@unique([uid, link])
+  @@index([uid, pubdate])
+  @@index([uid, favoriteCount])
+  @@map("comments")
+}
+
+model ReviewProject {
+  id          String      @id @default(cuid())
+  name        String
+  type        ProjectType
+  description String?
+  ownerName   String?     @map("owner_name")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  candidates ProjectCandidate[]
+  tasks      CollectionTask[]
+  scores     RiskScore[]
+  reports    Report[]
+  auditLogs  AuditLog[]
+
+  @@map("review_projects")
+}
+
+model ProjectCandidate {
+  id           String       @id @default(cuid())
+  projectId    String       @map("project_id")
+  project      ReviewProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uid          String
+  displayName  String?      @map("display_name")
+  remark       String?
+  reviewStatus ReviewStatus @default(pending) @map("review_status")
+  riskLevel    RiskLevel?   @map("risk_level")
+  riskScore    Int?         @map("risk_score")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  @@unique([projectId, uid])
+  @@map("project_candidates")
+}
+
+model CollectionTask {
+  id           String        @id @default(cuid())
+  uid          String
+  projectId    String?       @map("project_id")
+  project      ReviewProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  status       TaskStatus    @default(pending)
+  pageNum      Int           @default(1) @map("page_num")
+  pageSize     Int           @default(100) @map("page_size")
+  totalCount   Int?          @map("total_count")
+  fetchedCount Int           @default(0) @map("fetched_count")
+  errorCode    Int?          @map("error_code")
+  errorMessage String?       @map("error_message")
+  startedAt    DateTime?     @map("started_at")
+  finishedAt   DateTime?     @map("finished_at")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  @@index([uid, status])
+  @@map("collection_tasks")
+}
+
+model RiskRule {
+  id        String    @id @default(cuid())
+  name      String
+  category  String
+  type      RuleType
+  pattern   String
+  weight    Int
+  level     RiskLevel
+  reason    String
+  enabled   Boolean   @default(true)
+  version   Int       @default(1)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  hits RiskHit[]
+
+  @@map("risk_rules")
+}
+
+model RiskHit {
+  id          String    @id @default(cuid())
+  uid         String
+  commentId   String    @map("comment_id")
+  comment     Comment   @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  ruleId      String    @map("rule_id")
+  rule        RiskRule  @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  ruleVersion Int       @map("rule_version")
+  category    String
+  level       RiskLevel
+  score       Int
+  matchedText String?   @map("matched_text")
+  reason      String
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([uid, level])
+  @@index([commentId])
+  @@map("risk_hits")
+}
+
+model RiskScore {
+  id          String         @id @default(cuid())
+  uid         String
+  projectId   String?        @map("project_id")
+  project     ReviewProject? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  totalScore  Int            @map("total_score")
+  riskLevel   RiskLevel      @map("risk_level")
+  highCount   Int            @default(0) @map("high_count")
+  mediumCount Int            @default(0) @map("medium_count")
+  lowCount    Int            @default(0) @map("low_count")
+  lastRiskAt  DateTime?      @map("last_risk_at")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  @@unique([uid, projectId])
+  @@map("risk_scores")
+}
+
+model Report {
+  id        String         @id @default(cuid())
+  projectId String?        @map("project_id")
+  project   ReviewProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  uid       String?
+  type      String
+  title     String
+  htmlPath  String?        @map("html_path")
+  pdfPath   String?        @map("pdf_path")
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  @@map("reports")
+}
+
+model AuditLog {
+  id        String         @id @default(cuid())
+  projectId String?        @map("project_id")
+  project   ReviewProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  action    String
+  operator  String?
+  targetUid String?        @map("target_uid")
+  metadata  Json?
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  @@map("audit_logs")
+}
+
