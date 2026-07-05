@@ -77,7 +77,7 @@ export async function checkApiHealth(): Promise<void> {
     throw new Error('BiliBili Lens API 当前不可用。');
   }
   if (health.database && !health.database.ok) {
-    throw new Error('数据库未连接。请先启动 PostgreSQL，并执行 Prisma 迁移后再采集评论。');
+    throw new Error('本地 SQLite 数据库未连接，请确认后端服务已正常启动。');
   }
 }
 
@@ -120,7 +120,7 @@ async function requestJson(input: RequestInfo | URL, init?: RequestInit): Promis
   let response: Response;
   try {
     response = await fetch(input, init);
-  } catch (error) {
+  } catch {
     throw new Error(
       `无法连接到 BiliBili Lens API。请确认后端服务已启动，并且 NEXT_PUBLIC_API_BASE_URL 指向可访问地址。当前地址：${apiBaseUrl}`,
     );

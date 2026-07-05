@@ -29,13 +29,13 @@ export class CollectionController {
   }
 
   @Get('comments')
-  listComments(@Query('uid') uid?: string, @Query('take') take?: string) {
+  listComments(@Query('uid') uid?: string, @Query('take') take?: string, @Query('pageSize') pageSize?: string) {
     if (!uid) {
       throw new BadRequestException('uid is required');
     }
     assertUid(uid);
 
-    return this.collectionService.listComments(uid, take ? Number(take) : 50);
+    return this.collectionService.listComments(uid, parseTake(take ?? pageSize));
   }
 }
 
@@ -45,4 +45,17 @@ function assertUid(uid: string): void {
   if (!result.success) {
     throw new BadRequestException('uid must be a positive integer string with 1-20 digits and no leading zero');
   }
+}
+
+function parseTake(value?: string): number {
+  if (!value) {
+    return 50;
+  }
+
+  const take = Number(value);
+  if (!Number.isInteger(take) || take < 1 || take > 100) {
+    throw new BadRequestException('take/pageSize must be an integer between 1 and 100');
+  }
+
+  return take;
 }
