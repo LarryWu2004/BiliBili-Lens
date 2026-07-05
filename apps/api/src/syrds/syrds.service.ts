@@ -15,6 +15,11 @@ import {
 @Injectable()
 export class SyrdsService {
   private readonly baseUrl = (process.env.SYRDS_BASE_URL ?? 'http://120.55.124.239').replace(/\/$/, '');
+  private readonly bucketCapacity = 15;
+  private readonly refillIntervalMs = 4_000;
+  private availableTokens = this.bucketCapacity;
+  private lastRefillAt = Date.now();
+  private limiterChain: Promise<void> = Promise.resolve();
 
   async getReplies(params: GetRepliesParams): Promise<SyrdsRepliesResponse> {
     const pageNum = params.pageNum ?? 1;
@@ -39,6 +44,8 @@ export class SyrdsService {
     if (params.end_dt) {
       url.searchParams.set('end_dt', params.end_dt);
     }
+
+    await this.acquireRepliesToken();
 
     const body = await this.fetchJson<SyrdsRepliesResponse>(url);
     this.assertBusinessSuccess(body);
@@ -119,5 +126,37 @@ export class SyrdsService {
     }
 
     throw new BadGatewayException(`syrds business error code=${body.code ?? 'unknown'} msg=${body.msg ?? ''}`);
+  }
+
+  private acquireRepliesToken(): Promise<void> {
+    this.limiterChain = this.limiterChain.then(() => this.takeToken());
+    return this.limiterChain;
+  }
+
+  private async takeToken(): Promise<void> {
+    this.refillTokens();
+
+    if (this.availableTokens >= 1) {
+      this.availableTokens -= 1;
+      return;
+    }
+
+    const waitMs = Math.max(0, this.refillIntervalMs - (Date.now() - this.lastRefillAt));
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    this.refillTokens();
+    this.availableTokens = Math.max(0, this.availableTokens - 1);
+  }
+
+  private refillTokens(): void {
+    const now = Date.now();
+    const elapsed = now - this.lastRefillAt;
+    const tokensToAdd = Math.floor(elapsed / this.refillIntervalMs);
+
+    if (tokensToAdd <= 0) {
+      return;
+    }
+
+    this.availableTokens = Math.min(this.bucketCapacity, this.availableTokens + tokensToAdd);
+    this.lastRefillAt += tokensToAdd * this.refillIntervalMs;
   }
 }

@@ -1,8 +1,16 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
-import { Activity, Database, FileSearch, Gauge, RefreshCw, ShieldCheck } from 'lucide-react';
-import { checkApiHealth, collectPage, CollectionResult, CommentRow, listComments } from '../lib/api';
+import { Activity, Database, FileSearch, Gauge, RefreshCw, ScanSearch, ShieldCheck } from 'lucide-react';
+import {
+  checkApiHealth,
+  collectPage,
+  CollectionResult,
+  CommentRow,
+  listComments,
+  RiskSummary,
+  scanRisk,
+} from '../lib/api';
 
 const uidPattern = /^[1-9]\d{0,19}$/;
 
@@ -15,8 +23,10 @@ export default function HomePage() {
   const [endDt, setEndDt] = useState('');
   const [result, setResult] = useState<CollectionResult | null>(null);
   const [comments, setComments] = useState<CommentRow[]>([]);
+  const [riskSummary, setRiskSummary] = useState<RiskSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [riskLoading, setRiskLoading] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -41,10 +51,29 @@ export default function HomePage() {
       const rows = await listComments(collection.uid, 20);
       setResult(collection);
       setComments(rows);
+      setRiskSummary(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '采集失败');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleRiskScan() {
+    if (!result?.uid) {
+      setError('请先采集评论，再执行风险扫描。');
+      return;
+    }
+
+    setError(null);
+    setRiskLoading(true);
+    try {
+      await checkApiHealth();
+      setRiskSummary(await scanRisk(result.uid));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '风险扫描失败');
+    } finally {
+      setRiskLoading(false);
     }
   }
 
@@ -175,6 +204,25 @@ export default function HomePage() {
             </p>
           </section>
         </div>
+
+        <section className="panel" style={{ marginTop: 16 }}>
+          <div className="panel-header">
+            <h2 className="panel-title">风险扫描</h2>
+            <button className="button secondary" type="button" onClick={handleRiskScan} disabled={!result || riskLoading}>
+              <ScanSearch size={16} />
+              {riskLoading ? '扫描中' : '扫描风险'}
+            </button>
+          </div>
+          <div className="metric-row">
+            <Metric label="风险分" value={riskSummary?.totalScore ?? '-'} />
+            <Metric label="风险等级" value={riskSummary?.riskLevel ?? '-'} />
+            <Metric label="高风险命中" value={riskSummary?.highCount ?? '-'} />
+            <Metric label="总命中数" value={riskSummary?.hitCount ?? '-'} />
+          </div>
+          <p className="subtle" style={{ marginTop: 14 }}>
+            当前扫描基于可配置规则引擎，结论仅作为风险提示和人工复核入口。
+          </p>
+        </section>
 
         <section className="panel" style={{ marginTop: 16 }}>
           <div className="panel-header">

@@ -29,6 +29,38 @@ export interface CommentRow {
   link: string | null;
 }
 
+export interface RiskSummary {
+  uid: string;
+  hitCount: number;
+  totalScore: number;
+  riskLevel: 'low' | 'medium' | 'high';
+  highCount: number;
+  mediumCount: number;
+  lowCount: number;
+  categoryCounts: Record<string, number>;
+  topHits?: RiskHit[];
+}
+
+export interface RiskHit {
+  id: string;
+  category: string;
+  level: 'low' | 'medium' | 'high';
+  score: number;
+  matchedText: string | null;
+  reason: string;
+  ruleName: string;
+  comment: {
+    id: string;
+    content: string;
+    pubdate: string | null;
+    videoTitle: string | null;
+    videoOwnerName: string | null;
+    favoriteCount: number;
+    replyCount: number;
+    link: string | null;
+  };
+}
+
 interface HealthResponse {
   ok: boolean;
   database?: {
@@ -72,6 +104,16 @@ export async function listComments(uid: string, take = 20): Promise<CommentRow[]
   url.searchParams.set('take', String(take));
 
   return requestJson(url) as Promise<CommentRow[]>;
+}
+
+export async function scanRisk(uid: string): Promise<RiskSummary> {
+  return requestJson(`${apiBaseUrl}/api/risk/scan/${uid}`, {
+    method: 'POST',
+  }) as Promise<RiskSummary>;
+}
+
+export async function getRiskSummary(uid: string): Promise<RiskSummary> {
+  return requestJson(`${apiBaseUrl}/api/risk/summary/${uid}`) as Promise<RiskSummary>;
 }
 
 async function requestJson(input: RequestInfo | URL, init?: RequestInit): Promise<unknown> {
