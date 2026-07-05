@@ -15,7 +15,9 @@
     "lint": "npm run lint -w apps/api && npm run lint -w apps/web",
     "typecheck": "npm run typecheck -w apps/api && npm run typecheck -w apps/web",
     "prisma:generate": "npm run prisma:generate -w apps/api",
-    "prisma:migrate": "npm run prisma:migrate -w apps/api"
+    "prisma:migrate": "npm run prisma:migrate -w apps/api",
+    "prisma:generate:postgres": "npm run prisma:generate:postgres -w apps/api",
+    "prisma:migrate:postgres": "npm run prisma:migrate:postgres -w apps/api"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
@@ -26,4 +28,3 @@
     "npm": ">=10.0.0"
   }
 }
-

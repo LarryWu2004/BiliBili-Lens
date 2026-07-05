@@ -1,14 +1,14 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { RiskLevel, RiskRule, RuleType } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { LocalDbService } from '../local-db/local-db.service';
+import { RiskLevel, RiskRuleRow } from '../local-db/local-db.types';
 import { defaultRiskRules } from './default-rules';
 
 @Injectable()
 export class RiskService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(@Inject(LocalDbService) private readonly localDb: LocalDbService) {}
 
-  async seedDefaultRules() {
-    const existingCount = await this.prisma.riskRule.count();
+  seedDefaultRules() {
+    const existingCount = this.localDb.countRiskRules();
     if (existingCount > 0) {
       return {
         created: 0,
@@ -16,35 +16,26 @@ export class RiskService {
       };
     }
 
-    const result = await this.prisma.riskRule.createMany({
-      data: defaultRiskRules,
-    });
+    const created = this.localDb.createRiskRules(defaultRiskRules);
 
     return {
-      created: result.count,
+      created,
       skipped: 0,
     };
   }
 
   listRules() {
-    return this.prisma.riskRule.findMany({
-      orderBy: [{ enabled: 'desc' }, { category: 'asc' }, { createdAt: 'asc' }],
-    });
+    return this.localDb.listRiskRules();
   }
 
-  async scanUid(uid: string) {
+  scanUid(uid: string) {
     assertUid(uid);
-    await this.ensureRulesExist();
+    this.ensureRulesExist();
 
-    const [rules, comments] = await Promise.all([
-      this.prisma.riskRule.findMany({ where: { enabled: true } }),
-      this.prisma.comment.findMany({
-        where: { uid },
-        orderBy: { pubdate: 'desc' },
-      }),
-    ]);
+    const rules = this.localDb.listRiskRules(true);
+    const comments = this.localDb.getComments(uid);
 
-    await this.prisma.riskHit.deleteMany({ where: { uid } });
+    this.localDb.deleteRiskHits(uid);
 
     const hits = [];
     for (const comment of comments) {
@@ -69,7 +60,7 @@ export class RiskService {
     }
 
     if (hits.length) {
-      await this.prisma.riskHit.createMany({ data: hits });
+      this.localDb.createRiskHits(hits);
     }
 
     const summary = summarizeHits(hits);
@@ -82,18 +73,10 @@ export class RiskService {
     };
   }
 
-  async getSummary(uid: string) {
+  getSummary(uid: string) {
     assertUid(uid);
 
-    const hits = await this.prisma.riskHit.findMany({
-      where: { uid },
-      include: {
-        comment: true,
-        rule: true,
-      },
-      orderBy: [{ score: 'desc' }, { createdAt: 'desc' }],
-      take: 50,
-    });
+    const hits = this.localDb.getRiskHitsWithRelations(uid, 50);
 
     const summary = summarizeHits(hits);
 
@@ -123,20 +106,20 @@ export class RiskService {
     };
   }
 
-  private async ensureRulesExist(): Promise<void> {
-    const count = await this.prisma.riskRule.count();
+  private ensureRulesExist(): void {
+    const count = this.localDb.countRiskRules();
     if (count === 0) {
-      await this.seedDefaultRules();
+      this.seedDefaultRules();
     }
   }
 }
 
-function matchRule(rule: RiskRule, content: string): string | null {
+function matchRule(rule: RiskRuleRow, content: string): string | null {
   const flags = 'iu';
   const expression =
-    rule.type === RuleType.keyword
+    rule.type === 'keyword'
       ? new RegExp(rule.pattern, flags)
-      : rule.type === RuleType.regex
+      : rule.type === 'regex'
         ? new RegExp(rule.pattern, flags)
         : null;
 
@@ -154,7 +137,7 @@ function calculateCommentRuleScore(
   favoriteCount: number,
   replyCount: number,
 ): number {
-  const levelBase = level === RiskLevel.high ? 60 : level === RiskLevel.medium ? 30 : 10;
+  const levelBase = level === 'high' ? 60 : level === 'medium' ? 30 : 10;
   const impactScore =
     (favoriteCount > 500 ? 25 : favoriteCount > 100 ? 15 : 0) +
     (replyCount > 100 ? 20 : replyCount > 20 ? 10 : 0);
@@ -163,9 +146,9 @@ function calculateCommentRuleScore(
 }
 
 function summarizeHits(hits: Array<{ level: RiskLevel; category: string; score: number }>) {
-  const highCount = hits.filter((hit) => hit.level === RiskLevel.high).length;
-  const mediumCount = hits.filter((hit) => hit.level === RiskLevel.medium).length;
-  const lowCount = hits.filter((hit) => hit.level === RiskLevel.low).length;
+  const highCount = hits.filter((hit) => hit.level === 'high').length;
+  const mediumCount = hits.filter((hit) => hit.level === 'medium').length;
+  const lowCount = hits.filter((hit) => hit.level === 'low').length;
   const categoryCounts = hits.reduce<Record<string, number>>((acc, hit) => {
     acc[hit.category] = (acc[hit.category] ?? 0) + 1;
     return acc;
@@ -178,7 +161,7 @@ function summarizeHits(hits: Array<{ level: RiskLevel; category: string; score: 
 
   return {
     totalScore,
-    riskLevel: totalScore >= 71 ? RiskLevel.high : totalScore >= 31 ? RiskLevel.medium : RiskLevel.low,
+    riskLevel: totalScore >= 71 ? 'high' : totalScore >= 31 ? 'medium' : 'low',
     highCount,
     mediumCount,
     lowCount,
@@ -191,4 +174,3 @@ function assertUid(uid: string): void {
     throw new BadRequestException('uid must be a positive integer string with 1-20 digits and no leading zero');
   }
 }
-

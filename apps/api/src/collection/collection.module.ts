@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
-import { PrismaModule } from '../prisma/prisma.module';
+import { LocalDbModule } from '../local-db/local-db.module';
 import { SyrdsModule } from '../syrds/syrds.module';
 import { CollectionController } from './collection.controller';
 import { CollectionService } from './collection.service';
 
 @Module({
-  imports: [PrismaModule, SyrdsModule],
+  imports: [LocalDbModule, SyrdsModule],
   controllers: [CollectionController],
   providers: [CollectionService],
 })

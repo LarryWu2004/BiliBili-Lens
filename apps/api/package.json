@@ -9,8 +9,10 @@
     "start": "node dist/main.js",
     "lint": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev --name init"
+    "prisma:generate": "prisma generate --schema prisma/schema.prisma",
+    "prisma:migrate": "prisma migrate dev --schema prisma/schema.prisma --name init",
+    "prisma:generate:postgres": "prisma generate --schema prisma/schema.prisma",
+    "prisma:migrate:postgres": "prisma migrate dev --schema prisma/schema.prisma --name init"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
@@ -28,4 +30,3 @@
     "typescript": "^5.7.3"
   }
 }
-

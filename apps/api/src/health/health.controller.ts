@@ -1,9 +1,9 @@
 import { Controller, Get, Inject } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { LocalDbService } from '../local-db/local-db.service';
 
 @Controller('health')
 export class HealthController {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(@Inject(LocalDbService) private readonly localDb: LocalDbService) {}
 
   @Get()
   async getHealth() {
@@ -13,12 +13,11 @@ export class HealthController {
     };
 
     try {
-      await this.prisma.$queryRaw`SELECT 1`;
+      this.localDb.countRiskRules();
     } catch {
       database = {
         ok: false,
-        message:
-          'PostgreSQL is not reachable. Start the database service and run Prisma migrations before collecting comments.',
+        message: 'Local SQLite database is not reachable.',
       };
     }
 

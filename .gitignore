@@ -32,6 +32,10 @@ pnpm-debug.log*
 # Database and local services
 *.sqlite
 *.sqlite3
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
 dump.rdb
 
 # Reports and generated artifacts

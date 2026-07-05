@@ -1,14 +1,13 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { Prisma, TaskStatus } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { LocalDbService } from '../local-db/local-db.service';
 import { SyrdsService } from '../syrds/syrds.service';
 import { CollectPageInput } from './collection.schemas';
 
 @Injectable()
 export class CollectionService {
   constructor(
-    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(LocalDbService) private readonly localDb: LocalDbService,
     @Inject(SyrdsService) private readonly syrdsService: SyrdsService,
   ) {}
 
@@ -17,15 +16,13 @@ export class CollectionService {
       throw new BadRequestException('start_dt must be earlier than or equal to end_dt');
     }
 
-    const task = await this.prisma.collectionTask.create({
-      data: {
-        uid: input.uid,
-        projectId: input.projectId,
-        status: TaskStatus.running,
-        pageNum: input.pageNum,
-        pageSize: input.pageSize,
-        startedAt: new Date(),
-      },
+    const task = this.localDb.createCollectionTask({
+      uid: input.uid,
+      projectId: input.projectId,
+      status: 'running',
+      pageNum: input.pageNum,
+      pageSize: input.pageSize,
+      startedAt: new Date(),
     });
 
     try {
@@ -53,55 +50,29 @@ export class CollectionService {
         contentHash: hashComment(response.uid, reply.content, reply.pubdate, reply.bvid),
       }));
 
-      await this.prisma.userProfile.upsert({
-        where: { uid: response.uid },
-        update: {
-          currentName: response.current_name || null,
-          allNames: response.all_names || null,
-          commentCount: response.review_num ?? 0,
-          firstCommentAt: minDate(comments.map((comment) => comment.pubdate)),
-          lastCommentAt: maxDate(comments.map((comment) => comment.pubdate)),
-        },
-        create: {
-          uid: response.uid,
-          currentName: response.current_name || null,
-          allNames: response.all_names || null,
-          commentCount: response.review_num ?? 0,
-          firstCommentAt: minDate(comments.map((comment) => comment.pubdate)),
-          lastCommentAt: maxDate(comments.map((comment) => comment.pubdate)),
-        },
+      this.localDb.upsertUserProfile({
+        uid: response.uid,
+        currentName: response.current_name || null,
+        allNames: response.all_names || null,
+        commentCount: response.review_num ?? 0,
+        firstCommentAt: minDate(comments.map((comment) => comment.pubdate)),
+        lastCommentAt: maxDate(comments.map((comment) => comment.pubdate)),
       });
 
-      const createManyResult = comments.length
-        ? await this.prisma.comment.createMany({
-            data: comments,
-            skipDuplicates: true,
-          })
-        : { count: 0 };
+      const insertedCount = comments.length ? this.localDb.insertComments(comments) : 0;
 
-      const localStats = await this.prisma.comment.aggregate({
-        where: { uid: response.uid },
-        _count: true,
-        _min: { pubdate: true },
-        _max: { pubdate: true },
+      const localStats = this.localDb.getCommentStats(response.uid);
+
+      this.localDb.updateUserCommentStats(response.uid, {
+        firstCommentAt: localStats.firstCommentAt,
+        lastCommentAt: localStats.lastCommentAt,
       });
 
-      await this.prisma.userProfile.update({
-        where: { uid: response.uid },
-        data: {
-          firstCommentAt: localStats._min.pubdate,
-          lastCommentAt: localStats._max.pubdate,
-        },
-      });
-
-      const completedTask = await this.prisma.collectionTask.update({
-        where: { id: task.id },
-        data: {
-          status: TaskStatus.completed,
-          totalCount: response.review_num,
-          fetchedCount: response.data.length,
-          finishedAt: new Date(),
-        },
+      const completedTask = this.localDb.updateCollectionTask(task.id, {
+        status: 'completed',
+        totalCount: response.review_num,
+        fetchedCount: response.data.length,
+        finishedAt: new Date(),
       });
 
       return {
@@ -111,18 +82,15 @@ export class CollectionService {
         allNames: response.all_names,
         platformReviewNum: response.review_num,
         fetchedCount: response.data.length,
-        insertedCount: createManyResult.count,
-        localCommentCount: localStats._count,
+        insertedCount,
+        localCommentCount: localStats.count,
         requestUrl: response.requestUrl,
       };
     } catch (error) {
-      await this.prisma.collectionTask.update({
-        where: { id: task.id },
-        data: {
-          status: TaskStatus.failed,
-          errorMessage: error instanceof Error ? error.message : 'Unknown collection error',
-          finishedAt: new Date(),
-        },
+      this.localDb.updateCollectionTask(task.id, {
+        status: 'failed',
+        errorMessage: error instanceof Error ? error.message : 'Unknown collection error',
+        finishedAt: new Date(),
       });
 
       throw error;
@@ -130,28 +98,15 @@ export class CollectionService {
   }
 
   getTask(id: string) {
-    return this.prisma.collectionTask.findUniqueOrThrow({
-      where: { id },
-    });
+    return this.localDb.getCollectionTask(id);
   }
 
   getProfile(uid: string) {
-    return this.prisma.userProfile.findUniqueOrThrow({
-      where: { uid },
-      include: {
-        _count: {
-          select: { comments: true },
-        },
-      },
-    });
+    return this.localDb.getUserProfile(uid);
   }
 
   listComments(uid: string, take = 50) {
-    return this.prisma.comment.findMany({
-      where: { uid },
-      orderBy: { pubdate: 'desc' },
-      take: Math.min(Math.max(take, 1), 100),
-    });
+    return this.localDb.listComments(uid, Math.min(Math.max(take, 1), 100));
   }
 }
 
